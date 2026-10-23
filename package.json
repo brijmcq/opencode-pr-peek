@@ -1,0 +1,45 @@
+{
+  "name": "opencode-pr-peek",
+  "version": "0.1.0",
+  "description": "Clickable current-branch pull requests at the top of the OpenCode V2 sidebar.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tui": "./src/tui.tsx"
+  },
+  "files": [
+    "tui.ts",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:tui": "python3 test/tui/smoke.py",
+    "check": "npm run format:check && npm run typecheck && npm test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@effect/platform-node": "4.0.1",
+    "effect": "4.0.1"
+  },
+  "peerDependencies": {
+    "@opencode/plugin": "^2.1.4",
+    "@opentui/core": ">=0.6.6",
+    "@opentui/solid": ">=0.6.6",
+    "solid-js": "^1.9.0"
+  },
+  "devDependencies": {
+    "@opencode/theme": "2.1.4",
+    "@types/node": "^24.0.0",
+    "prettier": "^3.9.10",
+    "typescript": "^5.9.0",
+    "vitest": "^4.0.0"
+  },
+  "overrides": {
+    "seroval": "^1.7.1"
+  }
+}
