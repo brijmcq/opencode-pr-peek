@@ -18,23 +18,32 @@ export function messageTexts(message: Message): string[] {
   return []
 }
 
+function isCreationCommand(command: string): boolean {
+  if (/[;&|\n]/.test(command)) return false
+  // Skip leading assignments without evaluating their values, including quoted auth substitutions.
+  const assignment =
+    /\s*[A-Za-z_][A-Za-z0-9_]*=(?:[^\s"'\\]|'[^']*'|"(?:[^"\\]|\\.)*"|\\[^\n])*\s+/y
+  let start = 0
+  while (true) {
+    assignment.lastIndex = start
+    if (!assignment.test(command)) break
+    start = assignment.lastIndex
+  }
+  return /^\s*gh\s+pr\s+create(?:\s|$)/.test(command.slice(start))
+}
+
 export function createdReferences(message: Message, host: string): PRReference[] {
   if (message.type !== "assistant") return []
   return message.content.flatMap((part) => {
     if (
       part.type !== "tool" ||
-      part.name !== "shell" ||
+      (part.name !== "shell" && part.name !== "bash") ||
       part.state.status !== "completed" ||
       part.state.metadata?.exit !== 0
     )
       return []
     const command = part.state.input.command
-    if (
-      typeof command !== "string" ||
-      !/^\s*gh\s+pr\s+create(?:\s|$)/.test(command) ||
-      /[;&|\n]/.test(command)
-    )
-      return []
+    if (typeof command !== "string" || !isCreationCommand(command)) return []
     const output = part.state.content
       .flatMap((content) => (content.type === "text" ? [content.text] : []))
       .join("\n")

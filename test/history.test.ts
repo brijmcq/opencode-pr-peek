@@ -125,11 +125,34 @@ describe("session PR references", () => {
     expect(createdReferences(reviewConversation[1]!, branch.host)).toEqual([])
   })
   it.each([
+    'GH_TOKEN="$(gh auth token --user work-account)" gh pr create --repo pluslabs/billing-vcc --body-file /work/body.md',
+    "GH_TOKEN=token GH_PROMPT_DISABLED=1 gh pr create --draft",
+    "GH_TOKEN='token with spaces' gh pr create --draft",
+    'GH_TOKEN="" gh pr create --draft',
+  ])("recognizes successful creation with leading environment assignments: %s", (command) => {
+    expect(createdReferences(creationMessage(command), branch.host)).toEqual([
+      { host: "github.com", repository: "pluslabs/billing-vcc", number: 32 },
+    ])
+  })
+  it("recognizes successful creation recorded by the legacy bash tool", () => {
+    const message = creationMessage()
+    if (message.type === "assistant" && message.content[0]?.type === "tool")
+      message.content[0].name = "bash"
+    expect(createdReferences(message, branch.host)).toEqual([
+      { host: "github.com", repository: "pluslabs/billing-vcc", number: 32 },
+    ])
+  })
+  it.each([
     ["gh pr create", 1],
     ["gh pr create", null],
     ["echo gh pr create", 0],
     ["gh pr view 32", 0],
     ["gh pr create; gh pr view 32", 0],
+    ['GH_TOKEN="$(gh auth token --user work-account)" gh pr create && gh pr view 32', 0],
+    ["GH_TOKEN=token gh pr create | cat", 0],
+    ["GH_TOKEN=token gh pr create\necho done", 0],
+    ["GH_TOKEN=token echo gh pr create", 0],
+    ['GH_TOKEN="gh pr create" gh pr view 32', 0],
   ] as const)(
     "does not infer creation from an unsuccessful or ambiguous command %s",
     (command, exit) => {
@@ -148,10 +171,13 @@ describe("session PR references", () => {
       ),
     ).toEqual([])
   })
-  it("recovers successful creation evidence when reopening the session", async () => {
+  it.each([
+    "gh pr create --draft",
+    'GH_TOKEN="$(gh auth token --user work-account)" gh pr create --draft',
+  ])("recovers successful creation on the default branch when reopening: %s", async (command) => {
     const states: SessionPRState[] = []
     const readPage: Parameters<typeof monitorSession>[2] = async ({ cursor }) => ({
-      data: cursor ? [] : [creationMessage()],
+      data: cursor ? [] : [creationMessage(command)],
       cursor: { next: cursor ? null : "after-create" },
     })
     const commands = Commands.of({ run: () => Effect.succeed(apiPR(32)) })
@@ -160,7 +186,7 @@ describe("session PR references", () => {
       Effect.scoped(
         monitorSession(
           "ses_created",
-          branch,
+          { ...branch, localBranch: "main", headBranch: "main" },
           readPage,
           (state) => states.push(state),
           () => {},

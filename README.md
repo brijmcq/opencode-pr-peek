@@ -97,7 +97,7 @@ Open PRs use the theme's success color. Drafts use muted text. Merged PRs use th
 
 Open/draft PRs appear first, newest updated first. Merged/closed PRs follow them. Each section initially shows three, with **Show more** for the remainder. GitHub results are paginated.
 
-**Working PRs** includes the current branch's PRs, PRs created during this session, and your manual pins. Creation requires a successful direct `gh pr create` shell call with exit code zero and one PR URL as its output. An assistant saying "created" is not enough. Compound shell commands and other creation tools are not inferred. Pin those PRs manually.
+**Working PRs** includes the current branch's PRs, PRs created during this session, and your manual pins. Creation requires a successful direct `gh pr create` call from the `shell` tool (or the legacy `bash` tool) with exit code zero and one PR URL as its output. Leading environment assignments are supported, including `GH_TOKEN="$(gh auth token --user work-account)" gh pr create ...`. Assignment values are only parsed, never evaluated. An assistant saying "created" is not enough. Compound shell commands and other creation tools are not inferred. Pin those PRs manually.
 
 **Related PRs** contains other references from user messages and assistant text. It is collapsed by default. Raw tool output, reasoning, commit history, diffs, and bulk GitHub results do not add related PRs. The sole tool-output exception is the confirmed creation result described above.
 
