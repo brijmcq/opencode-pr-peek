@@ -2,16 +2,9 @@
 
 Your work's pull requests, clickable at the top of the OpenCode V2 sidebar. Companion PRs created during the session appear with the branch's PRs. Other mentions stay under collapsed **Related PRs**.
 
-```text
-Working PRs                    ↻ Refresh
-feature/login
+<img src="docs/screenshots/pr-peek-sidebar.png" alt="PR Peek in the OpenCode sidebar, showing working PRs, review status, related PRs, and pin and hide controls" width="478">
 
-app#482 · draft ↗
-Fix login redirect loop
-Copy link  Hide
-
-▸ Related PRs (2)
-```
+Demo captured from OpenCode 2.1.4 with synthetic PRs. No private work appears in the image.
 
 Open and draft PRs also show their code-review status. The status comes from GitHub's aggregate review decision, not a guess based on the latest comment:
 
@@ -136,6 +129,8 @@ No PR creation, CI automation, agent prompts, token storage, or background model
 npm ci
 npm run check
 ```
+
+GitHub Actions runs `npm ci` and `npm run check` on pushes and pull requests. CI uses Node 26.4.0 and read-only repository permissions. It checks formatting, TypeScript, and unit tests without GitHub credentials. The real TUI test below remains a separate local check; CI does not install or launch OpenCode.
 
 ### Real TUI smoke test (opt-in)
 
