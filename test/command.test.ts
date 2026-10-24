@@ -4,10 +4,10 @@ import { Commands } from "../src/command.js"
 import { opener } from "../src/actions.js"
 
 const cwd = process.cwd()
-const run = (args: string[], input?: string) =>
+const run = (args: string[], input?: string, env?: Readonly<Record<string, string>>) =>
   Effect.runPromise(
     Effect.flatMap(Commands, (commands) =>
-      commands.run({ binary: process.execPath, args, cwd, input }),
+      commands.run({ binary: process.execPath, args, cwd, input, env }),
     ).pipe(Effect.provide(Commands.layer)),
   )
 
@@ -23,6 +23,13 @@ describe("scoped process runner", () => {
   it("passes clipboard content through stdin, not a shell", async () => {
     const input = "https://github.com/team/app/pull/1?x=$(touch unwanted)"
     expect(await run(["-e", "process.stdin.pipe(process.stdout)"], input)).toBe(input)
+  })
+  it("adds command-specific environment variables", async () => {
+    expect(
+      await run(["-e", "process.stdout.write(process.env.PR_PEEK_TEST ?? '')"], undefined, {
+        PR_PEEK_TEST: "available",
+      }),
+    ).toBe("available")
   })
   it("distinguishes missing executables", async () => {
     const result = Effect.flatMap(Commands, (commands) =>

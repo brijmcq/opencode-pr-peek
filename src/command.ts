@@ -16,6 +16,7 @@ export interface CommandInput {
   readonly args: ReadonlyArray<string>
   readonly cwd: string
   readonly input?: string
+  readonly env?: Readonly<Record<string, string>>
 }
 
 export class Commands extends Context.Service<
@@ -34,7 +35,12 @@ export class Commands extends Context.Service<
             const child = yield* spawner.spawn(
               ChildProcess.make(input.binary, input.args, {
                 cwd: input.cwd,
-                env: { GH_PROMPT_DISABLED: "1", GIT_TERMINAL_PROMPT: "0", NO_COLOR: "1" },
+                env: {
+                  GH_PROMPT_DISABLED: "1",
+                  GIT_TERMINAL_PROMPT: "0",
+                  NO_COLOR: "1",
+                  ...input.env,
+                },
                 extendEnv: true,
                 stdin:
                   input.input === undefined

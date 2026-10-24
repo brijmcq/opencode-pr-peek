@@ -232,6 +232,77 @@ describe("PR lookup", () => {
     })
     expect(await run(Effect.flatMap(GitHub, (gh) => gh.pulls(branch)))).toEqual([])
   })
+  it("retries an inaccessible repository with another authenticated account", async () => {
+    const calls: CommandInput[] = []
+    const commands = Commands.of({
+      run: (input: CommandInput) => {
+        calls.push(input)
+        const command = input.args.join(" ")
+        if (command === repoCommand && input.env?.GH_TOKEN !== "alice-token") {
+          return Effect.fail(
+            new CommandError({
+              binary: "gh",
+              kind: "exit",
+              detail: "GraphQL: Could not resolve to a Repository with the name 'alice/app'.",
+              exitCode: 1,
+            }),
+          )
+        }
+        if (command === "auth status --hostname github.com --json hosts") {
+          return Effect.succeed(
+            JSON.stringify({
+              hosts: {
+                "github.com": [
+                  { login: "other", active: true, state: "success" },
+                  { login: "alice", active: false, state: "success" },
+                ],
+              },
+            }),
+          )
+        }
+        if (command === "auth token --hostname github.com --user alice") {
+          return Effect.succeed("alice-token")
+        }
+        if (command === repoCommand) {
+          return Effect.succeed(
+            JSON.stringify({
+              nameWithOwner: "alice/app",
+              parent: { nameWithOwner: "team/app" },
+              defaultBranchRef: { name: "main" },
+            }),
+          )
+        }
+        if (command === apiCommand) return Effect.succeed(JSON.stringify([[apiPR(1)]]))
+        if (
+          command === "pr view 1 --repo github.com/team/app --json reviewDecision,reviewRequests"
+        ) {
+          return Effect.succeed(JSON.stringify({ reviewDecision: "", reviewRequests: [] }))
+        }
+        return Effect.fail(
+          new CommandError({
+            binary: input.binary,
+            kind: "exit",
+            detail: "unexpected",
+            exitCode: 1,
+          }),
+        )
+      },
+    })
+    const result = await Effect.runPromise(
+      Effect.flatMap(GitHub, (github) => github.pulls(branch)).pipe(
+        Effect.provide(GitHub.layer),
+        Effect.provideService(Commands, commands),
+      ),
+    )
+
+    expect(result).toMatchObject([{ number: 1 }])
+    expect(calls.filter((call) => call.args.join(" ") === repoCommand)).toHaveLength(2)
+    expect(
+      calls
+        .filter((call) => call.args[0] === "api" || call.args[0] === "pr")
+        .every((call) => call.env?.GH_TOKEN === "alice-token"),
+    ).toBe(true)
+  })
   it("rejects malformed API data rather than treating it as no PR", async () => {
     const { run } = fixture({ [repoCommand]: "not JSON" })
     const result = await run(
