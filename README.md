@@ -126,6 +126,8 @@ The repository's default branch does not automatically add Working PRs. For exam
 
 For a fork, PRs are queried in its parent repository. Matching includes the full head repository and branch to exclude other forks with identical branch names. PRs targeting unrelated repositories or targeting the fork itself are not aggregated. GitHub Enterprise hosts use the authentication already configured in `gh`.
 
+When multiple `gh` accounts are authenticated on the same host, PR Peek tries the active account first. If that account cannot access the repository, it retries the other healthy accounts, preferring a login that matches the remote owner. The selected credential is used only by that repository's lookup commands; PR Peek does not change the globally active `gh` account or store tokens itself.
+
 Detached HEAD, no PR, missing `gh`, authentication failures, and lookup failures are distinct states. Old links are cleared when the branch changes or a lookup fails rather than silently displaying an unrelated/stale PR.
 
 No PR creation, CI automation, agent prompts, token storage, or background model calls.

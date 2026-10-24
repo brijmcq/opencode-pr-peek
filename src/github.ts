@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Schema } from "effect"
-import { Commands, CommandError } from "./command.js"
+import { Commands, CommandError, type CommandInput } from "./command.js"
 import { enrichReview } from "./review.js"
 import {
   PeekError,
@@ -29,31 +29,121 @@ const ApiPR = Schema.Struct({
 })
 const Pages = Schema.Array(Schema.Array(ApiPR))
 
+interface GitHubAccount {
+  readonly login: string
+  readonly active: boolean
+  readonly state: string
+}
+
+interface GitHubCommandResult {
+  readonly output: string
+  readonly env?: Readonly<Record<string, string>>
+}
+
+interface CommandRunner {
+  readonly run: (input: CommandInput) => Effect.Effect<string, CommandError>
+}
+
+function accountsFromStatus(value: string, host: string): ReadonlyArray<GitHubAccount> {
+  try {
+    const parsed = JSON.parse(value) as {
+      hosts?: Record<string, ReadonlyArray<Partial<GitHubAccount>>>
+    }
+    return (parsed.hosts?.[host] ?? []).filter(
+      (account): account is GitHubAccount =>
+        typeof account.login === "string" &&
+        typeof account.active === "boolean" &&
+        typeof account.state === "string",
+    )
+  } catch {
+    return []
+  }
+}
+
+function inaccessibleRepository(error: CommandError): boolean {
+  return (
+    error.kind === "exit" &&
+    /could not resolve to a repository|HTTP 404|not found|repository.*(?:missing|exist)/i.test(
+      error.detail,
+    )
+  )
+}
+
+const runGitHubRepository = Effect.fn("runGitHubRepository")(function* (
+  commands: CommandRunner,
+  directory: string,
+  host: string,
+  repository: string,
+  args: ReadonlyArray<string>,
+) {
+  const run = (env?: Readonly<Record<string, string>>) =>
+    commands.run({ binary: "gh", args, cwd: directory, env })
+  const first = yield* run().pipe(
+    Effect.map((output) => ({ kind: "success", output }) as const),
+    Effect.catch((error) => Effect.succeed({ kind: "failure", error } as const)),
+  )
+  if (first.kind === "success") return { output: first.output } satisfies GitHubCommandResult
+  if (!inaccessibleRepository(first.error)) return yield* Effect.fail(first.error)
+
+  const status = yield* commands
+    .run({
+      binary: "gh",
+      cwd: directory,
+      args: ["auth", "status", "--hostname", host, "--json", "hosts"],
+    })
+    .pipe(Effect.catch(() => Effect.succeed("")))
+  const owner = repository.split("/")[0]?.toLowerCase()
+  const accounts = accountsFromStatus(status, host)
+    .filter((account) => account.state === "success" && !account.active)
+    .toSorted(
+      (a, b) => Number(b.login.toLowerCase() === owner) - Number(a.login.toLowerCase() === owner),
+    )
+
+  for (const account of accounts) {
+    const token = yield* commands
+      .run({
+        binary: "gh",
+        cwd: directory,
+        args: ["auth", "token", "--hostname", host, "--user", account.login],
+      })
+      .pipe(Effect.catch(() => Effect.succeed("")))
+    if (!token) continue
+    const env = { GH_TOKEN: token }
+    const retry = yield* run(env).pipe(
+      Effect.map((output) => ({ kind: "success", output }) as const),
+      Effect.catch((error) => Effect.succeed({ kind: "failure", error } as const)),
+    )
+    if (retry.kind === "success") return { output: retry.output, env } satisfies GitHubCommandResult
+    if (!inaccessibleRepository(retry.error)) return yield* Effect.fail(retry.error)
+  }
+  return yield* Effect.fail(first.error)
+})
+
 export const lookupPR = Effect.fn("lookupPR")(function* (
   directory: string,
   reference: PRReference,
 ) {
   const commands = yield* Commands
-  const result = yield* commands
-    .run({
-      binary: "gh",
-      cwd: directory,
-      args: [
-        "api",
-        "--hostname",
-        reference.host,
-        `repos/${reference.repository}/pulls/${reference.number}`,
-      ],
-    })
-    .pipe(
-      Effect.catch((error) =>
-        error.kind === "exit" && /(?:HTTP 404|Not Found)/i.test(error.detail)
-          ? Effect.succeed(undefined)
-          : Effect.fail(githubError(error)),
-      ),
-    )
-  if (result === undefined) return undefined
-  const pr = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ApiPR))(result).pipe(
+  const command = yield* runGitHubRepository(
+    commands,
+    directory,
+    reference.host,
+    reference.repository,
+    [
+      "api",
+      "--hostname",
+      reference.host,
+      `repos/${reference.repository}/pulls/${reference.number}`,
+    ],
+  ).pipe(
+    Effect.catch((error) =>
+      error.kind === "exit" && /(?:HTTP 404|Not Found)/i.test(error.detail)
+        ? Effect.succeed(undefined)
+        : Effect.fail(githubError(error)),
+    ),
+  )
+  if (command === undefined) return undefined
+  const pr = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ApiPR))(command.output).pipe(
     Effect.mapError(
       () =>
         new PeekError({ kind: "invalid-data", message: "Unexpected GitHub pull request response" }),
@@ -66,7 +156,7 @@ export const lookupPR = Effect.fn("lookupPR")(function* (
     state: pr.merged_at ? "merged" : pr.state === "closed" ? "closed" : pr.draft ? "draft" : "open",
     updatedAt: pr.updated_at,
   } satisfies PullRequest
-  return yield* enrichReview(directory, pullRequest)
+  return yield* enrichReview(directory, pullRequest, command.env)
 })
 
 export function parseRemote(remote: string): { host: string; repository: string } | undefined {
@@ -179,17 +269,20 @@ export class GitHub extends Context.Service<
       )
 
       const pulls = Effect.fn("GitHub.pulls")(function* (branch: Branch) {
-        const gh = (...args: string[]) =>
-          commands
-            .run({ binary: "gh", args, cwd: branch.directory })
-            .pipe(Effect.mapError(githubError))
-        const repo = yield* gh(
-          "repo",
-          "view",
-          `${branch.host}/${branch.repository}`,
-          "--json",
-          "nameWithOwner,parent,defaultBranchRef",
-        ).pipe(
+        const repoCommand = yield* runGitHubRepository(
+          commands,
+          branch.directory,
+          branch.host,
+          branch.repository,
+          [
+            "repo",
+            "view",
+            `${branch.host}/${branch.repository}`,
+            "--json",
+            "nameWithOwner,parent,defaultBranchRef",
+          ],
+        ).pipe(Effect.mapError(githubError))
+        const repo = yield* Effect.succeed(repoCommand.output).pipe(
           Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Repo))),
           Effect.mapError((error) =>
             error instanceof PeekError
@@ -205,24 +298,25 @@ export class GitHub extends Context.Service<
         const base = repo.parent?.nameWithOwner ?? repo.nameWithOwner
         const owner = branch.repository.split("/")[0]!
         const endpoint = `repos/${base}/pulls?state=all&head=${encodeURIComponent(`${owner}:${branch.headBranch}`)}&per_page=100&sort=updated&direction=desc`
-        const pages = yield* gh(
-          "api",
-          "--hostname",
-          branch.host,
-          endpoint,
-          "--paginate",
-          "--slurp",
-        ).pipe(
-          Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Pages))),
-          Effect.mapError((error) =>
-            error instanceof PeekError
-              ? error
-              : new PeekError({
-                  kind: "invalid-data",
-                  message: "Unexpected GitHub pull request response",
-                }),
-          ),
-        )
+        const pages = yield* commands
+          .run({
+            binary: "gh",
+            cwd: branch.directory,
+            env: repoCommand.env,
+            args: ["api", "--hostname", branch.host, endpoint, "--paginate", "--slurp"],
+          })
+          .pipe(
+            Effect.mapError(githubError),
+            Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Pages))),
+            Effect.mapError((error) =>
+              error instanceof PeekError
+                ? error
+                : new PeekError({
+                    kind: "invalid-data",
+                    message: "Unexpected GitHub pull request response",
+                  }),
+            ),
+          )
         const pullRequests = pages
           .flat()
           .filter(
@@ -246,7 +340,9 @@ export class GitHub extends Context.Service<
         return yield* Effect.forEach(
           pullRequests,
           (pr) =>
-            enrichReview(branch.directory, pr).pipe(Effect.provideService(Commands, commands)),
+            enrichReview(branch.directory, pr, repoCommand.env).pipe(
+              Effect.provideService(Commands, commands),
+            ),
           { concurrency: 4 },
         )
       })

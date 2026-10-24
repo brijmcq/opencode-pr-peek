@@ -12,6 +12,7 @@ const ReviewResponse = Schema.Struct({
 export const enrichReview = Effect.fn("enrichReview")(function* (
   directory: string,
   pr: PullRequest,
+  env?: Readonly<Record<string, string>>,
 ): Effect.fn.Return<PullRequest, never, Commands> {
   if (pr.state === "merged" || pr.state === "closed") return pr
   const commands = yield* Commands
@@ -21,6 +22,7 @@ export const enrichReview = Effect.fn("enrichReview")(function* (
     .run({
       binary: "gh",
       cwd: directory,
+      env,
       args: [
         "pr",
         "view",
