@@ -85,7 +85,7 @@ Open PRs use the theme's success color. Drafts use muted text. Merged PRs use th
 
 ## Use
 
-- Click a PR number **or title** to open it in your default browser. In Herdr, use **Ctrl+click** to open the terminal hyperlink on the Herdr client computer instead.
+- Click a PR number **or title** to open it in your default browser. In Herdr, use your client's open-link gesture (**Command+click on Mac**) to open the terminal hyperlink on the Herdr client computer instead.
 - Click **Copy link** to copy its URL.
 - Click **Refresh**, or use `/pr-refresh`.
 - Use `/pr-open` or `/pr-copy` from the prompt. Multiple PRs open a searchable chooser.
@@ -97,7 +97,7 @@ Open PRs use the theme's success color. Drafts use muted text. Merged PRs use th
 
 ### SSH and Herdr
 
-PR numbers and titles carry standard terminal hyperlinks (OSC 8). With Herdr running on your Mac and connected to this computer through a saved SSH machine or `herdr --remote`, **Ctrl+click** opens the PR in your Mac's browser. A plain click or `/pr-open` shows the full clickable URL and instructions instead of launching a browser on the remote host. Other SSH terminals use their own open-link gesture.
+PR numbers and titles carry standard terminal hyperlinks (OSC 8). With Herdr running on your Mac and connected to this computer through a saved SSH machine or `herdr --remote`, **Command+click** opens the PR in your Mac's browser. The gesture is handled by the local client/terminal, not selected using the remote host's operating system; other clients may use a different modifier. A plain click or `/pr-open` shows the full clickable URL and instructions instead of launching a browser on the remote host. Other SSH terminals use their own open-link gesture.
 
 PR Peek detects Herdr using `HERDR_ENV=1` or `TERM_PROGRAM=herdr`, and SSH using `SSH_CONNECTION`, `SSH_CLIENT`, or `SSH_TTY`. Herdr always uses terminal hyperlinks because a persistent pane cannot reliably tell where its current client is running. If you SSH first and then run the Herdr client on the remote host, Herdr's opener also runs there; run Herdr on your Mac with remote attach for Mac-side opening. Plain SSH without Herdr depends on the Mac terminal's OSC 8 support. Clipboard commands are unchanged and still run on the machine hosting the TUI.
 

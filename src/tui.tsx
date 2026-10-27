@@ -30,7 +30,7 @@ function Sidebar(props: { sessionID: string; runtime: Runtime; options: PeekOpti
   const openMode = linkOpenMode()
   const terminalLinkHint =
     openMode === "herdr"
-      ? "Ctrl+click a PR link to open it on the computer running the Herdr client."
+      ? "Use your Herdr client's open-link gesture (Command+click on Mac) to open the PR locally."
       : "Use your terminal's open-link gesture to open the PR on your computer."
   const [state, setState] = createSignal<PeekState>(initialState)
   const [refresh, setRefresh] = createSignal<() => void>(() => {})
@@ -437,7 +437,7 @@ function Sidebar(props: { sessionID: string; runtime: Runtime; options: PeekOpti
       <Show when={openMode !== "desktop"}>
         <text fg={ctx.theme.text.muted}>
           {openMode === "herdr"
-            ? "Ctrl+click PR links to open locally"
+            ? "Open locally: Command+click on Mac"
             : "Open links via your terminal"}
         </text>
       </Show>
