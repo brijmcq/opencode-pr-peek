@@ -4,7 +4,7 @@ import { Effect, Layer, ManagedRuntime } from "effect"
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from "solid-js"
 import { Commands } from "./command.js"
 import { GitHub } from "./github.js"
-import { copyPR, openPR } from "./actions.js"
+import { copyPR, linkOpenMode, openPR } from "./actions.js"
 import { cleanLabel, initialState, type PeekState, type PullRequest } from "./model.js"
 import { monitor } from "./monitor.js"
 import { parseOptions, type PeekOptions } from "./options.js"
@@ -27,6 +27,11 @@ type Runtime = ReturnType<typeof createRuntime>
 
 function Sidebar(props: { sessionID: string; runtime: Runtime; options: PeekOptions }) {
   const ctx = usePlugin()
+  const openMode = linkOpenMode()
+  const terminalLinkHint =
+    openMode === "herdr"
+      ? "Ctrl+click a PR link to open it on the computer running the Herdr client."
+      : "Use your terminal's open-link gesture to open the PR on your computer."
   const [state, setState] = createSignal<PeekState>(initialState)
   const [refresh, setRefresh] = createSignal<() => void>(() => {})
   const [sessionRefresh, setSessionRefresh] = createSignal<() => void>(() => {})
@@ -155,7 +160,10 @@ function Sidebar(props: { sessionID: string; runtime: Runtime; options: PeekOpti
     if (!cwd) return
     await props.runtime
       .runPromise(
-        (action === "open" ? openPR : copyPR)(cwd, pr.url).pipe(
+        Effect.gen(function* () {
+          if (action === "open") return yield* openPR(cwd, pr.url)
+          yield* copyPR(cwd, pr.url)
+        }).pipe(
           Effect.match({
             onFailure: () =>
               ctx.ui.toast.show({
@@ -165,9 +173,24 @@ function Sidebar(props: { sessionID: string; runtime: Runtime; options: PeekOpti
                     ? "Could not open browser"
                     : "Could not copy link — install a clipboard utility",
               }),
-            onSuccess: () => {
+            onSuccess: (mode) => {
               if (action === "copy")
                 ctx.ui.toast.show({ variant: "success", message: "PR link copied" })
+              else if (mode === "herdr" || mode === "terminal") {
+                ctx.ui.dialog.set({ size: "large" })
+                ctx.ui.dialog.show(() => (
+                  <box flexDirection="column" padding={1} gap={1}>
+                    <text fg={ctx.theme.text.base}>
+                      <b>Open pull request</b>
+                    </text>
+                    <text fg={ctx.theme.text.muted}>{terminalLinkHint}</text>
+                    <text fg={ctx.theme.hue.accent[500]}>
+                      <a href={pr.url}>{pr.url}</a>
+                    </text>
+                    <text fg={ctx.theme.text.muted}>Escape to close</text>
+                  </box>
+                ))
+              }
             },
           }),
         ),
@@ -329,15 +352,23 @@ function Sidebar(props: { sessionID: string; runtime: Runtime; options: PeekOpti
           onMouseOver={() => setHovered(true)}
           onMouseOut={() => setHovered(false)}
           onMouseUp={(event) => {
-            if (event.button === 0) void act(row.pr, "open")
+            if (
+              event.button === 0 &&
+              !event.modifiers.ctrl &&
+              !event.modifiers.alt &&
+              !event.modifiers.shift
+            )
+              void act(row.pr, "open")
           }}
         >
           <text fg={hovered() ? ctx.theme.text.base : color()} wrapMode="none" overflow="hidden">
-            {`${prLabel(row.pr)} · ${row.pr.state} ↗${props.options.compact && props.options.showTitle ? ` ${cleanLabel(row.pr.title)}` : ""}`}
+            <a href={row.pr.url}>
+              {`${prLabel(row.pr)} · ${row.pr.state} ↗${props.options.compact && props.options.showTitle ? ` ${cleanLabel(row.pr.title)}` : ""}`}
+            </a>
           </text>
           <Show when={props.options.showTitle && !props.options.compact}>
             <text fg={ctx.theme.text.muted} wrapMode="none" overflow="hidden">
-              {cleanLabel(row.pr.title)}
+              <a href={row.pr.url}>{cleanLabel(row.pr.title)}</a>
             </text>
           </Show>
           <Show when={review()}>
@@ -402,6 +433,13 @@ function Sidebar(props: { sessionID: string; runtime: Runtime; options: PeekOpti
             {cleanLabel(branch().localBranch)}
           </text>
         )}
+      </Show>
+      <Show when={openMode !== "desktop"}>
+        <text fg={ctx.theme.text.muted}>
+          {openMode === "herdr"
+            ? "Ctrl+click PR links to open locally"
+            : "Open links via your terminal"}
+        </text>
       </Show>
       <Show when={state().phase === "loading"}>
         <text fg={ctx.theme.text.muted}>Looking up PRs…</text>

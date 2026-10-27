@@ -22,7 +22,7 @@ Outstanding requests appear separately, such as **Approved · 1 requested**. A t
 - OpenCode **2.1.4**. Verified against this release; newer releases need checking because OpenCode supplies the Effect runtime.
 - Git and an authenticated [GitHub CLI](https://cli.github.com/): `gh auth login`.
 - A local checkout accessible from the machine running the terminal UI. This does not execute Git on a remote OpenCode server.
-- Clipboard: macOS `pbcopy`, Windows `clip.exe`, or Linux `wl-copy` / `xclip`. Linux browser opening uses `xdg-open`.
+- Clipboard: macOS `pbcopy`, Windows `clip.exe`, or Linux `wl-copy` / `xclip`. Local Linux browser opening uses `xdg-open`; SSH and Herdr use terminal hyperlinks instead.
 
 ## Install locally
 
@@ -85,15 +85,21 @@ Open PRs use the theme's success color. Drafts use muted text. Merged PRs use th
 
 ## Use
 
-- Click a PR number **or title** to open it in your default browser.
+- Click a PR number **or title** to open it in your default browser. In Herdr, use **Ctrl+click** to open the terminal hyperlink on the Herdr client computer instead.
 - Click **Copy link** to copy its URL.
 - Click **Refresh**, or use `/pr-refresh`.
-- Use `/pr-open` or `/pr-copy` without a mouse. Multiple PRs open a searchable chooser.
+- Use `/pr-open` or `/pr-copy` from the prompt. Multiple PRs open a searchable chooser.
 - Expand **Related PRs**, then click **Pin** to move one into Working PRs.
 - Click **Hide** to remove a PR from both sections. Click **Restore hidden PRs** to bring it back.
 - Click **Unpin** to remove a manual pin. Branch-linked and session-created PRs still count as working PRs.
 - `/pr-pin`, `/pr-unpin`, `/pr-hide`, and `/pr-restore` provide the same actions without a mouse.
 - The command palette includes these **PR Peek** actions. No keyboard shortcuts are claimed by default.
+
+### SSH and Herdr
+
+PR numbers and titles carry standard terminal hyperlinks (OSC 8). With Herdr running on your Mac and connected to this computer through a saved SSH machine or `herdr --remote`, **Ctrl+click** opens the PR in your Mac's browser. A plain click or `/pr-open` shows the full clickable URL and instructions instead of launching a browser on the remote host. Other SSH terminals use their own open-link gesture.
+
+PR Peek detects Herdr using `HERDR_ENV=1` or `TERM_PROGRAM=herdr`, and SSH using `SSH_CONNECTION`, `SSH_CLIENT`, or `SSH_TTY`. Herdr always uses terminal hyperlinks because a persistent pane cannot reliably tell where its current client is running. If you SSH first and then run the Herdr client on the remote host, Herdr's opener also runs there; run Herdr on your Mac with remote attach for Mac-side opening. Plain SSH without Herdr depends on the Mac terminal's OSC 8 support. Clipboard commands are unchanged and still run on the machine hosting the TUI.
 
 Open/draft PRs appear first, newest updated first. Merged/closed PRs follow them. Each section initially shows three, with **Show more** for the remainder. GitHub results are paginated.
 
